@@ -70,7 +70,7 @@
           <h1 class="text-base sm:text-lg font-black tracking-tight text-white leading-tight">
             カーテン一振りチャレンジ
           </h1>
-          <p class="text-[11px] text-zinc-400 font-medium">一発のストロークで <span class="text-amber-300 font-bold">100.0%</span> ピタッと閉めろ！</p>
+          <p class="text-[11px] text-zinc-400 font-medium">30%ラインまでに振り抜いて <span class="text-amber-300 font-bold">100.0%</span> ピタッと閉めろ！</p>
         </div>
       </div>
 
@@ -100,14 +100,51 @@
   </header>
 
   <!-- ステータスゲージ（閉まり具合・ラウンド・ベスト） -->
-  <section class="w-full max-w-4xl mx-auto grid grid-cols-3 gap-2 sm:gap-3 my-2 z-20">
+  <section class="w-full max-w-4xl mx-auto grid grid-cols-4 gap-1.5 sm:gap-3 my-2 z-20">
     <!-- 現在の閉まり具合 -->
-    <div class="bg-zinc-900/85 backdrop-blur-md border border-zinc-800 rounded-2xl px-3 py-2 flex flex-col items-center justify-center shadow-lg">
-      <span class="text-[10px] sm:text-xs font-bold text-zinc-400">現在の閉まり具合</span>
-      <div class="flex items-baseline gap-1">
-        <span id="livePercentText" class="font-mono-num text-xl sm:text-2xl font-extrabold text-amber-400">12.0</span>
-        <span class="text-xs font-bold text-zinc-500">%</span>
+    <div class="bg-zinc-900/85 backdrop-blur-md border border-zinc-800 rounded-2xl px-2 py-2 flex flex-col items-center justify-center shadow-lg">
+      <span class="text-[10px] sm:text-xs font-bold text-zinc-400">閉まり具合</span>
+      <div class="flex items-baseline gap-0.5">
+        <span id="livePercentText" class="font-mono-num text-lg sm:text-2xl font-extrabold text-amber-400">12.0</span>
+        <span class="text-[10px] sm:text-xs font-bold text-zinc-500">%</span>
       </div>
+    </div>
+
+    <!-- レールコンディション（摩擦レベル） -->
+    <div class="bg-zinc-900/85 backdrop-blur-md border border-zinc-800 rounded-2xl px-2 py-2 flex flex-col items-center justify-center shadow-lg">
+      <span class="text-[10px] sm:text-xs font-bold text-zinc-400">レール状態</span>
+      <div id="railConditionBadge" class="mt-0.5 px-2 py-0.5 rounded-md text-[11px] sm:text-xs font-black bg-zinc-800 text-sky-300 whitespace-nowrap">
+        普通のレール
+      </div>
+    </div>
+
+    <!-- ラウンド / スコア -->
+    <div class="bg-zinc-900/85 backdrop-blur-md border border-zinc-800 rounded-2xl px-2 py-2 flex flex-col items-center justify-center shadow-lg">
+      <span id="statCenterLabel" class="text-[10px] sm:text-xs font-bold text-zinc-400">ラウンド</span>
+      <div id="statCenterValue" class="font-mono-num text-sm sm:text-xl font-extrabold text-white mt-0.5">
+        1/5 <span class="text-[10px] sm:text-sm text-amber-400">(0pt)</span>
+      </div>
+    </div>
+
+    <!-- ベスト記録 -->
+    <div class="bg-zinc-900/85 backdrop-blur-md border border-zinc-800 rounded-2xl px-2 py-2 flex flex-col items-center justify-center shadow-lg">
+      <span class="text-[10px] sm:text-xs font-bold text-zinc-400">自己ベスト</span>
+      <div class="flex items-baseline gap-0.5">
+        <span id="bestPercentText" class="font-mono-num text-lg sm:text-2xl font-extrabold text-emerald-400">--</span>
+        <span class="text-[10px] sm:text-xs font-bold text-zinc-500">%</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- メインゲームキャンバス領域 -->
+  <main class="relative flex-1 w-full max-w-4xl mx-auto rounded-3xl overflow-hidden border border-zinc-800 shadow-2xl bg-zinc-900">
+    <canvas id="gameCanvas" class="w-full h-full block cursor-grab active:cursor-grabbing"></canvas>
+
+    <!-- 操作ガイドピル -->
+    <div id="guideBanner" class="pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 bg-zinc-950/85 backdrop-blur-md border border-zinc-700/80 text-white text-xs sm:text-sm font-bold px-4 py-2 rounded-full shadow-xl flex items-center gap-2 whitespace-nowrap transition-opacity duration-300">
+      <span class="text-amber-400 animate-grab-hint">👈</span>
+      <span><span class="text-rose-400 font-black">30%の赤線</span>までに一振りでリリースせよ！</span>
+    </div>
     </div>
 
     <!-- ラウンド / スコア -->
@@ -457,44 +494,66 @@
         { name: 'テラコッタリネン', base: '#8C3B2B', shadow: '#592116', highlight: '#B55440', trim: '#FDE047' }
       ];
 
+      // レール摩擦バリエーション（毎回滑りやすさがランダム変化）
+      const RAIL_CONDITIONS = [
+        { label: '油をさしたて', sub: '超ツルツル！軽く振ろう', airDrag: 0.92, railFriction: 0.11, badgeClass: 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40' },
+        { label: '新品のレール', sub: 'よく滑る！跳ね返り注意', airDrag: 1.25, railFriction: 0.17, badgeClass: 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' },
+        { label: '普通のレール', sub: '標準的な滑り心地', airDrag: 1.65, railFriction: 0.24, badgeClass: 'bg-zinc-700/80 text-zinc-200 border border-zinc-600' },
+        { label: '少し渋いレール', sub: 'やや重め！しっかり振ろう', airDrag: 2.05, railFriction: 0.31, badgeClass: 'bg-amber-500/20 text-amber-300 border border-amber-500/40' },
+        { label: '年季入りレール', sub: '摩擦強め！思い切り振り抜け', airDrag: 2.45, railFriction: 0.39, badgeClass: 'bg-rose-500/20 text-rose-300 border border-rose-500/40' }
+      ];
+
+      const STORAGE_BEST_KEY = 'curtain_onestroke_best_v2';
+      let savedBest = null;
+      try {
+        const raw = localStorage.getItem(STORAGE_BEST_KEY);
+        if (raw !== null && !isNaN(parseFloat(raw))) {
+          savedBest = parseFloat(raw);
+        }
+      } catch (e) {}
+
       const state = {
         mode: 'challenge', // 'challenge' (5回) | 'endless'
         round: 1,
         maxRounds: 5,
         totalScore: 0,
         historyPercents: [],
-        bestPercent: null,
+        bestPercent: savedBest,
 
-        // ゲーム進行フェーズ: 'ready' (掴み待ち) | 'dragging' (掴んで移動中) | 'gliding' (手を離して滑走中) | 'settled' (停止・結果表示) | 'finished' (5回終了)
+        // ゲーム進行フェーズ: 'ready' | 'dragging' | 'gliding' | 'settled' | 'finished'
         phase: 'ready',
 
         // 物理状態（0.0 = 完全に開いた初期位置, 1.0 = 100%完全閉鎖）
-        // 初期状態は 12% ほど束ねられた状態からスタート
         initialOpenRatio: 0.12,
-        progress: 0.12,        // 現在の閉まり率 (0.12 〜 1.00)
-        velocity: 0,           // 閉まり率の速度 (ratio / sec)
-        maxReached: 0.12,      // 今回のストロークで到達した最大閉まり率
-        didBounce: false,      // 壁に激突して跳ね返ったか
+        releaseLimitRatio: 0.30, // 左端30%を超えると強制リリース！
+        progress: 0.12,
+        velocity: 0,
+        maxReached: 0.12,
+        didBounce: false,
         bounceCount: 0,
+        autoReleasedByLine: false, // 30%ライン突破による自動リリースフラグ
+        releaseFlashAlpha: 0,
 
-        // 布の揺れ物理（二次遅れ系バネダンパモデル）
-        hemSway: 0,            // 裾の遅れ角度・変位
-        hemSwayVel: 0,         // 裾の揺れ速度
+        // 布の揺れ物理
+        hemSway: 0,
+        hemSwayVel: 0,
 
         // ドラッグ入力計測
         dragOffsetX: 0,
-        pointerHistory: [],    // 直近のポインター位置と時刻（リリース速度算出用）
+        pointerHistory: [],
 
-        // 視覚エフェクト
+        // 視覚エフェクト & コンディション
         sparkles: [],
-        wallImpactFlash: 0,    // 壁激突時のフラッシュ強度
+        wallImpactFlash: 0,
         theme: CURTAIN_THEMES[0],
+        railCondition: RAIL_CONDITIONS[2],
         lastTime: 0
       };
 
       // UI参照
       const ui = {
         livePercentText: document.getElementById('livePercentText'),
+        railConditionBadge: document.getElementById('railConditionBadge'),
         statCenterLabel: document.getElementById('statCenterLabel'),
         statCenterValue: document.getElementById('statCenterValue'),
         bestPercentText: document.getElementById('bestPercentText'),
@@ -574,19 +633,23 @@
 
         // 100%に近づくほど文字色を強調
         if (state.progress >= 0.995) {
-          ui.livePercentText.className = 'font-mono-num text-xl sm:text-2xl font-extrabold text-emerald-400';
+          ui.livePercentText.className = 'font-mono-num text-lg sm:text-2xl font-extrabold text-emerald-400';
         } else if (state.progress >= 0.95) {
-          ui.livePercentText.className = 'font-mono-num text-xl sm:text-2xl font-extrabold text-amber-300';
+          ui.livePercentText.className = 'font-mono-num text-lg sm:text-2xl font-extrabold text-amber-300';
         } else {
-          ui.livePercentText.className = 'font-mono-num text-xl sm:text-2xl font-extrabold text-amber-400';
+          ui.livePercentText.className = 'font-mono-num text-lg sm:text-2xl font-extrabold text-amber-400';
         }
 
+        // レール状態の表示更新
+        ui.railConditionBadge.textContent = state.railCondition.label;
+        ui.railConditionBadge.className = `mt-0.5 px-2 py-0.5 rounded-md text-[11px] sm:text-xs font-black whitespace-nowrap ${state.railCondition.badgeClass}`;
+
         if (state.mode === 'challenge') {
-          ui.statCenterLabel.textContent = 'ラウンド (合計点)';
-          ui.statCenterValue.innerHTML = `${state.round}/${state.maxRounds} <span class="text-xs sm:text-sm text-amber-400">(${state.totalScore}pt)</span>`;
+          ui.statCenterLabel.textContent = 'ラウンド (点)';
+          ui.statCenterValue.innerHTML = `${state.round}/${state.maxRounds} <span class="text-[10px] sm:text-sm text-amber-400">(${state.totalScore}pt)</span>`;
         } else {
           ui.statCenterLabel.textContent = 'トライ回数';
-          ui.statCenterValue.innerHTML = `${state.round} <span class="text-xs font-bold text-zinc-400">回目</span>`;
+          ui.statCenterValue.innerHTML = `${state.round} <span class="text-[10px] sm:text-xs font-bold text-zinc-400">回目</span>`;
         }
 
         if (state.bestPercent !== null) {
@@ -609,11 +672,14 @@
         state.maxReached = state.initialOpenRatio;
         state.didBounce = false;
         state.bounceCount = 0;
+        state.autoReleasedByLine = false;
+        state.releaseFlashAlpha = 0;
         state.hemSway = 0;
         state.hemSwayVel = 0;
         state.sparkles = [];
         state.wallImpactFlash = 0;
         state.theme = CURTAIN_THEMES[(state.round - 1) % CURTAIN_THEMES.length];
+        state.railCondition = RAIL_CONDITIONS[Math.floor(Math.random() * RAIL_CONDITIONS.length)];
 
         ui.resultCard.classList.add('hidden');
         ui.finalChallengeModal.classList.add('hidden');
@@ -710,14 +776,14 @@
             detail = '1ミリも光を漏らさない完璧な力加減！';
           } else {
             detail = `あと ${gapPct.toFixed(1)}% 足りなかった！もう少しだけ強く引こう！`;
-          }
-        }
-
-        // 記録更新
+        // 記録更新 & localStorage保存
         state.totalScore += score;
         state.historyPercents.push(finalPct);
         if (state.bestPercent === null || finalPct > state.bestPercent) {
           state.bestPercent = finalPct;
+          try {
+            localStorage.setItem(STORAGE_BEST_KEY, String(finalPct));
+          } catch (e) {}
         }
         updateTopHUD();
 
@@ -810,20 +876,74 @@
         const pos = getPointerPos(e);
         const now = performance.now();
 
-        // ドラッグ中はカーテン先頭を手に追従させる（最大94%までにして、最後は必ず慣性で滑らせる）
-        const targetEdgeX = pos.x - state.dragOffsetX;
-        const rawProg = xToProgress(targetEdgeX);
-        const clampedProg = Math.max(state.initialOpenRatio, Math.min(0.94, rawProg));
-
-        const prevProg = state.progress;
-        state.progress = clampedProg;
-        state.maxReached = Math.max(state.maxReached, state.progress);
-
-        // 履歴を保持（直近90msの移動量からリリース初速度を正確に計算）
+        // 履歴を先に更新（リリース速度計算用）
         state.pointerHistory.push({ x: pos.x, t: now });
         while (state.pointerHistory.length > 2 && now - state.pointerHistory[0].t > 90) {
           state.pointerHistory.shift();
         }
+
+        const targetEdgeX = pos.x - state.dragOffsetX;
+        const rawProg = xToProgress(targetEdgeX);
+        const prevProg = state.progress;
+
+        // 30%のRELEASE LINEに到達・突破したら強制リリースして慣性滑走へ移行！
+        if (rawProg >= state.releaseLimitRatio) {
+          state.progress = state.releaseLimitRatio;
+          state.maxReached = Math.max(state.maxReached, state.progress);
+          state.autoReleasedByLine = true;
+          state.releaseFlashAlpha = 1.0;
+          launchCurtainGlide(now, true);
+          return;
+        }
+
+        const clampedProg = Math.max(state.initialOpenRatio, rawProg);
+        state.progress = clampedProg;
+        state.maxReached = Math.max(state.maxReached, state.progress);
+
+        // ドラッグ速度に応じた裾の揺れとレール音
+        const instantVel = (state.progress - prevProg) * 60;
+        state.hemSway = Math.max(-0.45, Math.min(0.45, -instantVel * 0.14));
+        audio.updateRailVelocity(Math.abs(instantVel));
+        updateTopHUD();
+      }
+
+      /**
+       * 指を離した（または30%ラインを超えた）瞬間に慣性滑走を開始する
+       */
+      function launchCurtainGlide(now, forcedByLine = false) {
+        let releaseVelRatio = 0;
+        if (state.pointerHistory.length >= 2) {
+          const oldest = state.pointerHistory[0];
+          const newest = state.pointerHistory[state.pointerHistory.length - 1];
+          const dtSec = Math.max(0.012, (now - oldest.t) / 1000);
+          const dx = newest.x - oldest.x;
+          const { startX, endX } = getWindowLayout();
+          const trackLen = Math.max(100, endX - startX);
+          releaseVelRatio = (dx / trackLen) / dtSec;
+        }
+
+        // 手動リリースでほとんど動かしていない場合のみやり直し可能に戻す
+        if (!forcedByLine && state.progress <= state.initialOpenRatio + 0.02 && releaseVelRatio < 0.15) {
+          state.phase = 'ready';
+          state.progress = state.initialOpenRatio;
+          ui.guideBanner.style.opacity = '1';
+          audio.updateRailVelocity(0);
+          updateTopHUD();
+          return;
+        }
+
+        // 一振り確定！慣性滑走フェーズへ移行（ここからは追加操作不可）
+        state.phase = 'gliding';
+        // 30%の短い助走距離から100%まで飛ばせるよう、初速係数をチューニング
+        state.velocity = Math.max(0.08, Math.min(5.2, releaseVelRatio * 1.38));
+        updateTopHUD();
+      }
+
+      function onPointerUp(e) {
+        if (state.phase !== 'dragging') return;
+        e.preventDefault();
+        launchCurtainGlide(performance.now(), false);
+      }
 
         // ドラッグ速度に応じた裾の揺れとレール音
         const instantVel = (state.progress - prevProg) * 60;
@@ -898,13 +1018,15 @@
         if (state.wallImpactFlash > 0) {
           state.wallImpactFlash = Math.max(0, state.wallImpactFlash - dt * 3.5);
         }
+        if (state.releaseFlashAlpha > 0) {
+          state.releaseFlashAlpha = Math.max(0, state.releaseFlashAlpha - dt * 2.4);
+        }
 
         if (state.phase !== 'gliding') return;
 
-        // レール摩擦と空気抵抗のモデル
-        // 高速時は空気抵抗が大きく、低速時はレールの転がり摩擦で「シャーッ…スッ」と止まる
-        const airDrag = 1.65;      // 速度比例の減衰係数
-        const railFriction = 0.24; // 一定の動摩擦力
+        // 現在のレールコンディションに応じた摩擦・空気抵抗
+        const airDrag = state.railCondition.airDrag;
+        const railFriction = state.railCondition.railFriction;
 
         const dir = Math.sign(state.velocity);
         const speed = Math.abs(state.velocity);
@@ -1070,6 +1192,42 @@
         ctx.strokeStyle = '#27272A';
         ctx.lineWidth = 10;
         ctx.strokeRect(winLeft - 3, topY - 3, winW + 6, winH + 6);
+
+        // 左端30%の「RELEASE LINE（赤い点線）」を描画
+        const releaseX = progressToX(state.releaseLimitRatio);
+        ctx.save();
+        // スワイプ可能ゾーン（左端〜30%）の淡いハイライト帯
+        if (state.phase === 'ready' || state.phase === 'dragging') {
+          ctx.fillStyle = 'rgba(244, 63, 94, 0.08)';
+          ctx.fillRect(winLeft, topY, releaseX - winLeft, winH);
+        }
+
+        // 30% RELEASE LINE（赤い点線）
+        ctx.strokeStyle = state.releaseFlashAlpha > 0
+          ? `rgba(251, 113, 133, ${0.75 + state.releaseFlashAlpha * 0.25})`
+          : 'rgba(244, 63, 94, 0.85)';
+        ctx.lineWidth = state.releaseFlashAlpha > 0 ? 3.5 : 2;
+        ctx.setLineDash([6, 5]);
+        ctx.beginPath();
+        ctx.moveTo(releaseX, railY - 6);
+        ctx.lineTo(releaseX, bottomY + 8);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // RELEASE LINE ラベルバッジ
+        ctx.fillStyle = state.releaseFlashAlpha > 0 ? '#F43F5E' : 'rgba(244, 63, 94, 0.9)';
+        const labelW = 86;
+        const labelH = 18;
+        ctx.beginPath();
+        ctx.roundRect(releaseX - labelW / 2, topY + 6, labelW, labelH, 5);
+        ctx.fill();
+
+        ctx.fillStyle = '#FFFFFF';
+        ctx.font = 'bold 9px "JetBrains Mono", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('RELEASE 30%', releaseX, topY + 15.5);
+        ctx.restore();
 
         // 右端の100%ターゲットライン（マグネットキャッチ位置の視覚ガイド）
         const targetX = progressToX(1.0);
